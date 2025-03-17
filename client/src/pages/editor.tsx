@@ -15,6 +15,7 @@ export default function Editor() {
   const documentId = parseInt(id);
   const [messages, setMessages] = useState<Message[]>([]);
   const connect = useWebSocket((state) => state.connect);
+  const disconnect = useWebSocket((state) => state.disconnect);
 
   // Query for document
   const { data: document, isLoading: docLoading, error: docError } = useQuery<Document>({
@@ -31,6 +32,22 @@ export default function Editor() {
     if (document) {
       // Connect to WebSocket when document is loaded
       connect(documentId, 1); // TODO: Get actual user ID from auth
+
+      // Set up message listener
+      const socket = useWebSocket.getState().socket;
+      if (socket) {
+        socket.onmessage = (event) => {
+          const message = JSON.parse(event.data);
+          if (message.type === 'chat') {
+            setMessages(prev => [...prev, message]);
+          }
+        };
+      }
+
+      // Cleanup
+      return () => {
+        disconnect();
+      };
     }
   }, [document, documentId]);
 
