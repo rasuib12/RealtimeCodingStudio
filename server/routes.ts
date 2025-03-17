@@ -53,20 +53,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // WebSocket handling
   wss.on("connection", (ws: WSClient) => {
+    console.log('New WebSocket connection established');
+
     ws.on("message", async (data) => {
       try {
         const message = JSON.parse(data.toString());
-        
+        console.log('Received WebSocket message:', message);
+
         switch (message.type) {
           case "join":
             ws.userId = message.userId;
             ws.documentId = message.documentId;
+            console.log(`User ${message.userId} joined document ${message.documentId}`);
             break;
-            
+
           case "code":
             await storage.updateDocument(message.documentId, message.content);
+            console.log(`Document ${message.documentId} updated by user ${ws.userId}`);
             break;
-            
+
           case "chat":
           case "drawing":
             const msg = await storage.createMessage({
@@ -76,6 +81,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               type: message.type,
               data: message.data
             });
+            console.log(`New ${message.type} message from user ${ws.userId} in document ${ws.documentId}`);
             break;
         }
 
@@ -87,8 +93,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           }
         });
       } catch (error) {
+        console.error('WebSocket message error:', error);
         ws.send(JSON.stringify({ type: "error", error: "Invalid message" }));
       }
+    });
+
+    ws.on("close", () => {
+      console.log(`WebSocket connection closed for user ${ws.userId}`);
+    });
+
+    ws.on("error", (error) => {
+      console.error('WebSocket error:', error);
     });
   });
 
