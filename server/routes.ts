@@ -71,26 +71,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
             if (!ws.documentId || !ws.userId) {
               throw new Error("Client not properly initialized");
             }
-            const msg = await storage.createMessage({
+
+            // Validate the message data
+            const msgData = {
               documentId: message.documentId,
               userId: ws.userId,
               content: message.content || '',
               type: message.type,
               data: message.data
-            });
+            };
 
-            // Broadcast the stored message with its ID to all clients in the document
+            log(`Creating new ${message.type} message:`, msgData);
+
+            // Store the message
+            const msg = await storage.createMessage(msgData);
+
+            log(`Stored message with ID: ${msg.id}`);
+
+            // Create broadcast message with all required fields
+            const broadcastMsg = {
+              id: msg.id,
+              documentId: message.documentId,
+              userId: ws.userId,
+              content: message.content || '',
+              type: message.type,
+              data: message.data
+            };
+
+            // Broadcast to all clients in the document
             wss.clients.forEach((client: WSClient) => {
               if (client.documentId === message.documentId && 
                   client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({
-                  id: msg.id,
-                  documentId: message.documentId,
-                  userId: ws.userId,
-                  content: message.content || '',
-                  type: message.type,
-                  data: message.data
-                }));
+                log(`Broadcasting message to client in document ${message.documentId}`);
+                client.send(JSON.stringify(broadcastMsg));
               }
             });
 
