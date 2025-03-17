@@ -4,15 +4,11 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import type { Message } from '@shared/schema';
 
 interface ChatBoxProps {
   documentId: number;
-  messages: Array<{
-    id: number;
-    content: string;
-    userId: number;
-    type: string;
-  }>;
+  messages: Message[];
 }
 
 export function ChatBox({ documentId, messages }: ChatBoxProps) {
@@ -33,7 +29,8 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
     sendMessage({
       type: 'chat',
       documentId,
-      content: message
+      userId: 1, // TODO: Get actual user ID from auth
+      content: message.trim()
     });
 
     setMessage('');

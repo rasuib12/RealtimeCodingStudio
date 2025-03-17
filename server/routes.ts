@@ -79,17 +79,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
               data: message.data
             });
 
-            // Broadcast the stored message with its ID
-            const broadcastMessage = {
-              ...message,
-              id: msg.id,
-              userId: ws.userId
-            };
-
+            // Broadcast the stored message with its ID to all clients in the document
             wss.clients.forEach((client: WSClient) => {
               if (client.documentId === message.documentId && 
                   client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify(broadcastMessage));
+                client.send(JSON.stringify({
+                  id: msg.id,
+                  documentId: message.documentId,
+                  userId: ws.userId,
+                  content: message.content || '',
+                  type: message.type,
+                  data: message.data
+                }));
               }
             });
 
