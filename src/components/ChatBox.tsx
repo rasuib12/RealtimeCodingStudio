@@ -29,6 +29,7 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
     sendMessage({
       type: 'chat',
       documentId,
+      userId: 1,
       content: message.trim()
     });
 
@@ -43,12 +44,12 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
             msg.type === 'chat' && (
               <div 
                 key={msg.id} 
-                className="p-3 rounded-lg bg-muted/50"
+                className="p-3 rounded-lg bg-secondary"
               >
-                <div className="font-semibold text-sm text-muted-foreground">
+                <div className="font-semibold text-sm text-primary">
                   User {msg.userId}
                 </div>
-                <div className="mt-1 text-sm">
+                <div className="mt-1 text-sm break-words">
                   {msg.content}
                 </div>
               </div>
@@ -61,7 +62,7 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
         <Input
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
           placeholder="Type a message..."
           className="flex-1"
         />
