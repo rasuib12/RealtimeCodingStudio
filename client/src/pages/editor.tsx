@@ -23,18 +23,10 @@ export default function Editor() {
   });
 
   // Query for messages
-  const { data: initialMessages, isLoading: msgsLoading } = useQuery<Message[]>({
+  const { isLoading: msgsLoading } = useQuery<Message[]>({
     queryKey: [`/api/documents/${documentId}/messages`],
-    enabled: !!documentId
+    onSuccess: (messages) => setMessages(messages || [])
   });
-
-  // Set initial messages when they load
-  useEffect(() => {
-    if (initialMessages) {
-      console.log('Setting initial messages:', initialMessages);
-      setMessages(initialMessages);
-    }
-  }, [initialMessages]);
 
   useEffect(() => {
     if (document) {
@@ -45,20 +37,9 @@ export default function Editor() {
       const socket = useWebSocket.getState().socket;
       if (socket) {
         socket.onmessage = (event) => {
-          try {
-            const message = JSON.parse(event.data);
-            console.log('Received WebSocket message:', message);
-
-            // Handle both chat and drawing messages
-            if (message.type === 'chat' || message.type === 'drawing') {
-              setMessages(prev => {
-                const newMessages = [...prev, message];
-                console.log('Updated messages state:', newMessages);
-                return newMessages;
-              });
-            }
-          } catch (error) {
-            console.error('Error processing message:', error);
+          const message = JSON.parse(event.data);
+          if (message.type === 'chat') {
+            setMessages(prev => [...prev, message]);
           }
         };
       }
@@ -68,7 +49,7 @@ export default function Editor() {
         disconnect();
       };
     }
-  }, [document, documentId, connect, disconnect]);
+  }, [document, documentId]);
 
   // Show loading state
   if (docLoading || msgsLoading) {
@@ -87,8 +68,6 @@ export default function Editor() {
       </div>
     );
   }
-
-  console.log('Rendering ChatBox with messages:', messages);
 
   return (
     <div className="container mx-auto p-4 h-screen flex flex-col gap-4">

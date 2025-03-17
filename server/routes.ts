@@ -4,7 +4,6 @@ import { WebSocketServer } from "ws";
 import { storage } from "./storage";
 import { insertUserSchema, insertDocumentSchema, insertMessageSchema } from "@shared/schema";
 import WebSocket from "ws";
-import { log } from "./vite";
 
 interface WSClient extends WebSocket {
   userId?: number;
@@ -13,128 +12,9 @@ interface WSClient extends WebSocket {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
-  // Initialize WebSocket server with path option
-  const wss = new WebSocketServer({ 
-    server: httpServer, 
-    path: '/ws',
-    perMessageDeflate: false
-  });
-
-  log('WebSocket server initialized on path: /ws', 'websocket');
-
-  // WebSocket connection handling
-  wss.on("connection", (ws: WSClient) => {
-    log('New WebSocket connection established', 'websocket');
-
-    ws.on("message", async (data) => {
-      try {
-        const message = JSON.parse(data.toString());
-        log(`Received WebSocket message: ${JSON.stringify(message)}`, 'websocket');
-
-        switch (message.type) {
-          case "join":
-            ws.userId = message.userId;
-            ws.documentId = message.documentId;
-            log(`User ${message.userId} joined document ${message.documentId}`, 'websocket');
-
-            // Send confirmation back to client
-            ws.send(JSON.stringify({
-              type: "joined",
-              userId: message.userId,
-              documentId: message.documentId
-            }));
-            break;
-
-          case "code":
-            if (!ws.documentId || !ws.userId) {
-              throw new Error("Client not properly initialized");
-            }
-            await storage.updateDocument(message.documentId, message.content);
-            log(`Document ${message.documentId} updated by user ${ws.userId}`, 'websocket');
-
-            // Broadcast code changes to all clients in the same document
-            wss.clients.forEach((client: WSClient) => {
-              if (client !== ws && 
-                  client.documentId === message.documentId && 
-                  client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({
-                  type: "code",
-                  content: message.content
-                }));
-              }
-            });
-            break;
-
-          case "chat":
-          case "drawing":
-            if (!ws.documentId || !ws.userId) {
-              throw new Error("Client not properly initialized");
-            }
-
-            // Validate the message data
-            const msgData = {
-              documentId: message.documentId,
-              userId: ws.userId,
-              content: message.content || '',
-              type: message.type,
-              data: message.data
-            };
-
-            log(`Creating new ${message.type} message:`, msgData);
-
-            // Store the message
-            const msg = await storage.createMessage(msgData);
-
-            log(`Stored message with ID: ${msg.id}`);
-
-            // Create broadcast message with all required fields
-            const broadcastMsg = {
-              id: msg.id,
-              documentId: message.documentId,
-              userId: ws.userId,
-              content: message.content || '',
-              type: message.type,
-              data: message.data
-            };
-
-            // Broadcast to all clients in the document
-            wss.clients.forEach((client: WSClient) => {
-              if (client.documentId === message.documentId && 
-                  client.readyState === WebSocket.OPEN) {
-                log(`Broadcasting message to client in document ${message.documentId}`);
-                client.send(JSON.stringify(broadcastMsg));
-              }
-            });
-
-            log(`New ${message.type} message from user ${ws.userId} in document ${message.documentId}`, 'websocket');
-            break;
-
-          default:
-            log(`Unknown message type: ${message.type}`, 'websocket');
-            throw new Error(`Unknown message type: ${message.type}`);
-        }
-
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        log(`WebSocket message error: ${errorMessage}`, 'error');
-        ws.send(JSON.stringify({ 
-          type: "error", 
-          error: errorMessage 
-        }));
-      }
-    });
-
-    ws.on("close", () => {
-      log(`WebSocket connection closed for user ${ws.userId}`, 'websocket');
-    });
-
-    ws.on("error", (error) => {
-      log(`WebSocket error: ${error.message}`, 'error');
-    });
-  });
-
-  // Add other HTTP routes
+  // User routes
   app.post("/api/users", async (req, res) => {
     try {
       const data = insertUserSchema.parse(req.body);
@@ -145,13 +25,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Document routes
   app.post("/api/documents", async (req, res) => {
     try {
       const data = insertDocumentSchema.parse(req.body);
-      const doc = await storage.createDocument({
-        ...data,
-        content: data.content || "// Start coding here"
-      });
+      const doc = await storage.createDocument(data);
       res.json(doc);
     } catch (error) {
       res.status(400).json({ error: "Invalid document data" });
@@ -167,9 +45,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json(doc);
   });
 
+  // Message routes
   app.get("/api/documents/:id/messages", async (req, res) => {
     const messages = await storage.getMessages(parseInt(req.params.id));
     res.json(messages);
+  });
+
+  // WebSocket handling
+  wss.on("connection", (ws: WSClient) => {
+    ws.on("message", async (data) => {
+      try {
+        const message = JSON.parse(data.toString());
+        
+        switch (message.type) {
+          case "join":
+            ws.userId = message.userId;
+            ws.documentId = message.documentId;
+            break;
+            
+          case "code":
+            await storage.updateDocument(message.documentId, message.content);
+            break;
+            
+          case "chat":
+          case "drawing":
+            const msg = await storage.createMessage({
+              documentId: ws.documentId!,
+              userId: ws.userId!,
+              content: message.content,
+              type: message.type,
+              data: message.data
+            });
+            break;
+        }
+
+        // Broadcast to all clients in same document
+        wss.clients.forEach((client: WSClient) => {
+          if (client.documentId === ws.documentId && 
+              client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify(message));
+          }
+        });
+      } catch (error) {
+        ws.send(JSON.stringify({ type: "error", error: "Invalid message" }));
+      }
+    });
   });
 
   return httpServer;

@@ -4,11 +4,15 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import type { Message } from '@shared/schema';
 
 interface ChatBoxProps {
   documentId: number;
-  messages: Message[];
+  messages: Array<{
+    id: number;
+    content: string;
+    userId: number;
+    type: string;
+  }>;
 }
 
 export function ChatBox({ documentId, messages }: ChatBoxProps) {
@@ -19,7 +23,7 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
@@ -29,23 +33,17 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
     sendMessage({
       type: 'chat',
       documentId,
-      userId: 1, // TODO: Get actual user ID from auth
-      content: message.trim()
+      content: message
     });
 
     setMessage('');
   };
 
-  // Filter only chat messages and ensure they're sorted by ID
-  const chatMessages = messages
-    .filter(msg => msg.type === 'chat')
-    .sort((a, b) => a.id - b.id);
-
   return (
     <Card className="flex flex-col h-full">
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         <div className="space-y-4">
-          {chatMessages.map((msg) => (
+          {messages.filter(msg => msg.type === 'chat').map((msg) => (
             <div 
               key={msg.id} 
               className="p-3 rounded-lg bg-muted/50"
@@ -58,7 +56,6 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
               </div>
             </div>
           ))}
-          <div ref={scrollRef} />
         </div>
       </ScrollArea>
 
