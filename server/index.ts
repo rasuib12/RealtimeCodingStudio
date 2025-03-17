@@ -11,15 +11,17 @@ app.use(express.urlencoded({ extended: false }));
   const server = await registerRoutes(app);
 
   // Add WebSocket-specific middleware before Vite
-  app.use('/ws', (req, res, next) => {
-    // Let WebSocket upgrade requests pass through
-    if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
-      log('WebSocket upgrade request detected');
+  app.use((req, res, next) => {
+    // Only handle WebSocket upgrade requests for our custom endpoint
+    if (req.headers.upgrade === 'websocket' && req.url.startsWith('/ws')) {
+      log(`Processing WebSocket upgrade request for: ${req.url}`, 'websocket');
+      return next();
     }
+    // Let all other requests pass through
     next();
   });
 
-  // Add logging middleware after routes
+  // Add logging middleware
   app.use((req, res, next) => {
     const start = Date.now();
     const path = req.path;
@@ -53,7 +55,7 @@ app.use(express.urlencoded({ extended: false }));
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
+    log(`Error: ${message}`, 'error');
     res.status(status).json({ message });
     throw err;
   });

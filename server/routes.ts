@@ -4,6 +4,7 @@ import { WebSocketServer } from "ws";
 import { storage } from "./storage";
 import { insertUserSchema, insertDocumentSchema, insertMessageSchema } from "@shared/schema";
 import WebSocket from "ws";
+import { log } from "./vite";
 
 interface WSClient extends WebSocket {
   userId?: number;
@@ -13,39 +14,29 @@ interface WSClient extends WebSocket {
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
 
-  // Initialize WebSocket server first
+  // Initialize WebSocket server with path option
   const wss = new WebSocketServer({ 
     server: httpServer, 
     path: '/ws',
-    perMessageDeflate: false // Disable compression for better compatibility
+    perMessageDeflate: false
   });
 
-  console.log('WebSocket server initialized on path: /ws');
+  log('WebSocket server initialized on path: /ws', 'websocket');
 
-  // Listen for upgrade events
-  httpServer.on('upgrade', (request, socket, head) => {
-    if (request.url === '/ws') {
-      console.log('Received WebSocket upgrade request');
-      wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-      });
-    }
-  });
-
-  // WebSocket handling
+  // WebSocket connection handling
   wss.on("connection", (ws: WSClient) => {
-    console.log('New WebSocket connection established');
+    log('New WebSocket connection established', 'websocket');
 
     ws.on("message", async (data) => {
       try {
         const message = JSON.parse(data.toString());
-        console.log('Received WebSocket message:', message);
+        log(`Received WebSocket message: ${JSON.stringify(message)}`, 'websocket');
 
         switch (message.type) {
           case "join":
             ws.userId = message.userId;
             ws.documentId = message.documentId;
-            console.log(`User ${message.userId} joined document ${message.documentId}`);
+            log(`User ${message.userId} joined document ${message.documentId}`, 'websocket');
 
             // Send confirmation back to client
             ws.send(JSON.stringify({
@@ -56,15 +47,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
             break;
 
           case "code":
+            if (!ws.documentId || !ws.userId) {
+              throw new Error("Client not properly initialized");
+            }
             await storage.updateDocument(message.documentId, message.content);
-            console.log(`Document ${message.documentId} updated by user ${ws.userId}`);
+            log(`Document ${message.documentId} updated by user ${ws.userId}`, 'websocket');
+
+            // Broadcast code changes to all clients in the same document
+            wss.clients.forEach((client: WSClient) => {
+              if (client !== ws && 
+                  client.documentId === message.documentId && 
+                  client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify({
+                  type: "code",
+                  content: message.content
+                }));
+              }
+            });
             break;
 
           case "chat":
           case "drawing":
+            if (!ws.documentId || !ws.userId) {
+              throw new Error("Client not properly initialized");
+            }
             const msg = await storage.createMessage({
               documentId: message.documentId,
-              userId: ws.userId!,
+              userId: ws.userId,
               content: message.content || '',
               type: message.type,
               data: message.data
@@ -84,22 +93,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             });
 
-            console.log(`New ${message.type} message from user ${ws.userId} in document ${message.documentId}`);
+            log(`New ${message.type} message from user ${ws.userId} in document ${message.documentId}`, 'websocket');
             break;
+
+          default:
+            log(`Unknown message type: ${message.type}`, 'websocket');
+            throw new Error(`Unknown message type: ${message.type}`);
         }
 
       } catch (error) {
-        console.error('WebSocket message error:', error);
-        ws.send(JSON.stringify({ type: "error", error: "Invalid message" }));
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        log(`WebSocket message error: ${errorMessage}`, 'error');
+        ws.send(JSON.stringify({ 
+          type: "error", 
+          error: errorMessage 
+        }));
       }
     });
 
     ws.on("close", () => {
-      console.log(`WebSocket connection closed for user ${ws.userId}`);
+      log(`WebSocket connection closed for user ${ws.userId}`, 'websocket');
     });
 
     ws.on("error", (error) => {
-      console.error('WebSocket error:', error);
+      log(`WebSocket error: ${error.message}`, 'error');
     });
   });
 

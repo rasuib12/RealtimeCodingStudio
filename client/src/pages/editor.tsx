@@ -25,7 +25,8 @@ export default function Editor() {
   // Query for messages
   const { isLoading: msgsLoading } = useQuery<Message[]>({
     queryKey: [`/api/documents/${documentId}/messages`],
-    onSuccess: (messages) => setMessages(messages || [])
+    enabled: !!documentId,
+    onSuccess: (data) => setMessages(data || [])
   });
 
   useEffect(() => {
@@ -37,15 +38,11 @@ export default function Editor() {
       const socket = useWebSocket.getState().socket;
       if (socket) {
         socket.onmessage = (event) => {
-          const message = JSON.parse(event.data);
+          const message = JSON.parse(event.data) as Message;
           console.log('Received message:', message);
 
           if (message.type === 'chat') {
-            setMessages(prev => {
-              console.log('Current messages:', prev);
-              console.log('Adding new message:', message);
-              return [...prev, message];
-            });
+            setMessages(prev => [...prev, message]);
           }
         };
       }
@@ -55,7 +52,7 @@ export default function Editor() {
         disconnect();
       };
     }
-  }, [document, documentId]);
+  }, [document, documentId, connect, disconnect]);
 
   // Show loading state
   if (docLoading || msgsLoading) {
