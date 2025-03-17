@@ -38,8 +38,14 @@ export default function Editor() {
       if (socket) {
         socket.onmessage = (event) => {
           const message = JSON.parse(event.data);
+          console.log('Received message:', message);
+
           if (message.type === 'chat') {
-            setMessages(prev => [...prev, message]);
+            setMessages(prev => {
+              console.log('Current messages:', prev);
+              console.log('Adding new message:', message);
+              return [...prev, message];
+            });
           }
         };
       }

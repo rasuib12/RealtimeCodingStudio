@@ -12,43 +12,24 @@ interface WSClient extends WebSocket {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const httpServer = createServer(app);
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
-  // User routes
-  app.post("/api/users", async (req, res) => {
-    try {
-      const data = insertUserSchema.parse(req.body);
-      const user = await storage.createUser(data);
-      res.json(user);
-    } catch (error) {
-      res.status(400).json({ error: "Invalid user data" });
-    }
+  // Initialize WebSocket server first
+  const wss = new WebSocketServer({ 
+    server: httpServer, 
+    path: '/ws',
+    perMessageDeflate: false // Disable compression for better compatibility
   });
 
-  // Document routes
-  app.post("/api/documents", async (req, res) => {
-    try {
-      const data = insertDocumentSchema.parse(req.body);
-      const doc = await storage.createDocument(data);
-      res.json(doc);
-    } catch (error) {
-      res.status(400).json({ error: "Invalid document data" });
-    }
-  });
+  console.log('WebSocket server initialized on path: /ws');
 
-  app.get("/api/documents/:id", async (req, res) => {
-    const doc = await storage.getDocument(parseInt(req.params.id));
-    if (!doc) {
-      res.status(404).json({ error: "Document not found" });
-      return;
+  // Listen for upgrade events
+  httpServer.on('upgrade', (request, socket, head) => {
+    if (request.url === '/ws') {
+      console.log('Received WebSocket upgrade request');
+      wss.handleUpgrade(request, socket, head, (ws) => {
+        wss.emit('connection', ws, request);
+      });
     }
-    res.json(doc);
-  });
-
-  // Message routes
-  app.get("/api/documents/:id/messages", async (req, res) => {
-    const messages = await storage.getMessages(parseInt(req.params.id));
-    res.json(messages);
   });
 
   // WebSocket handling
@@ -65,6 +46,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ws.userId = message.userId;
             ws.documentId = message.documentId;
             console.log(`User ${message.userId} joined document ${message.documentId}`);
+
+            // Send confirmation back to client
+            ws.send(JSON.stringify({
+              type: "joined",
+              userId: message.userId,
+              documentId: message.documentId
+            }));
             break;
 
           case "code":
@@ -75,23 +63,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
           case "chat":
           case "drawing":
             const msg = await storage.createMessage({
-              documentId: ws.documentId!,
+              documentId: message.documentId,
               userId: ws.userId!,
-              content: message.content,
+              content: message.content || '',
               type: message.type,
               data: message.data
             });
-            console.log(`New ${message.type} message from user ${ws.userId} in document ${ws.documentId}`);
+
+            // Broadcast the stored message with its ID
+            const broadcastMessage = {
+              ...message,
+              id: msg.id,
+              userId: ws.userId
+            };
+
+            wss.clients.forEach((client: WSClient) => {
+              if (client.documentId === message.documentId && 
+                  client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(broadcastMessage));
+              }
+            });
+
+            console.log(`New ${message.type} message from user ${ws.userId} in document ${message.documentId}`);
             break;
         }
 
-        // Broadcast to all clients in same document
-        wss.clients.forEach((client: WSClient) => {
-          if (client.documentId === ws.documentId && 
-              client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(message));
-          }
-        });
       } catch (error) {
         console.error('WebSocket message error:', error);
         ws.send(JSON.stringify({ type: "error", error: "Invalid message" }));
@@ -105,6 +101,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     ws.on("error", (error) => {
       console.error('WebSocket error:', error);
     });
+  });
+
+  // HTTP Routes
+  app.post("/api/users", async (req, res) => {
+    try {
+      const data = insertUserSchema.parse(req.body);
+      const user = await storage.createUser(data);
+      res.json(user);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid user data" });
+    }
+  });
+
+  app.post("/api/documents", async (req, res) => {
+    try {
+      const data = insertDocumentSchema.parse(req.body);
+      const doc = await storage.createDocument({
+        ...data,
+        content: data.content || "// Start coding here"
+      });
+      res.json(doc);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid document data" });
+    }
+  });
+
+  app.get("/api/documents/:id", async (req, res) => {
+    const doc = await storage.getDocument(parseInt(req.params.id));
+    if (!doc) {
+      res.status(404).json({ error: "Document not found" });
+      return;
+    }
+    res.json(doc);
+  });
+
+  app.get("/api/documents/:id/messages", async (req, res) => {
+    const messages = await storage.getMessages(parseInt(req.params.id));
+    res.json(messages);
   });
 
   return httpServer;

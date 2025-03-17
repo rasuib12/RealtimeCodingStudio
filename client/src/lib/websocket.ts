@@ -67,6 +67,7 @@ export const useWebSocket = create<WebSocketStore>((set, get) => ({
     const { socket, connected } = get();
     if (socket && connected) {
       try {
+        console.log('Sending message:', message);
         socket.send(JSON.stringify(message));
       } catch (error) {
         console.error('Failed to send message:', error);

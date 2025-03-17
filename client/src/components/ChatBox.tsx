@@ -23,7 +23,7 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messages]);
 
@@ -41,7 +41,7 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
 
   return (
     <Card className="flex flex-col h-full">
-      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+      <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
           {messages.filter(msg => msg.type === 'chat').map((msg) => (
             <div 
@@ -56,6 +56,7 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
               </div>
             </div>
           ))}
+          <div ref={scrollRef} />
         </div>
       </ScrollArea>
 
