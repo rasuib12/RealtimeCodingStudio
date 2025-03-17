@@ -39,11 +39,16 @@ export function ChatBox({ documentId, messages }: ChatBoxProps) {
     setMessage('');
   };
 
+  // Filter only chat messages and ensure they're sorted by ID
+  const chatMessages = messages
+    .filter(msg => msg.type === 'chat')
+    .sort((a, b) => a.id - b.id);
+
   return (
     <Card className="flex flex-col h-full">
       <ScrollArea className="flex-1 p-4">
         <div className="space-y-4">
-          {messages.filter(msg => msg.type === 'chat').map((msg) => (
+          {chatMessages.map((msg) => (
             <div 
               key={msg.id} 
               className="p-3 rounded-lg bg-muted/50"

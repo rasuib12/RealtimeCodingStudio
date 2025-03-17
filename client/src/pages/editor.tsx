@@ -26,7 +26,8 @@ export default function Editor() {
   const { isLoading: msgsLoading } = useQuery<Message[]>({
     queryKey: [`/api/documents/${documentId}/messages`],
     enabled: !!documentId,
-    onSuccess: (data) => setMessages(data || [])
+    initialData: [],
+    onSuccess: (data) => setMessages(data)
   });
 
   useEffect(() => {
@@ -38,11 +39,23 @@ export default function Editor() {
       const socket = useWebSocket.getState().socket;
       if (socket) {
         socket.onmessage = (event) => {
-          const message = JSON.parse(event.data) as Message;
-          console.log('Received message:', message);
+          try {
+            const message = JSON.parse(event.data);
+            console.log('Received message:', message);
 
-          if (message.type === 'chat') {
-            setMessages(prev => [...prev, message]);
+            // Handle both chat and drawing messages
+            if (message.type === 'chat' || message.type === 'drawing') {
+              setMessages(prev => [...prev, {
+                id: message.id,
+                documentId: message.documentId,
+                userId: message.userId,
+                content: message.content || '',
+                type: message.type,
+                data: message.data
+              }]);
+            }
+          } catch (error) {
+            console.error('Error processing message:', error);
           }
         };
       }

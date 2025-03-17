@@ -120,7 +120,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
-  // HTTP Routes
+  // Add other HTTP routes
   app.post("/api/users", async (req, res) => {
     try {
       const data = insertUserSchema.parse(req.body);

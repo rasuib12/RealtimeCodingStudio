@@ -57,7 +57,6 @@ app.use(express.urlencoded({ extended: false }));
     const message = err.message || "Internal Server Error";
     log(`Error: ${message}`, 'error');
     res.status(status).json({ message });
-    throw err;
   });
 
   // Setup Vite after all other middleware
